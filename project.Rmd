@@ -1,0 +1,1070 @@
+---
+title: "project"
+author: "TianxingLe"
+date: "11/10/2018"
+output: html_document
+---
+
+Text mining
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tm)
+library(lsa)
+library(ggplot2)
+library(stringi)
+dataset<-read.csv("psm.csv")
+netmessage<-dataset[,c(10,16,18,20)]
+dataset<-dataset[,c(-2,-3,-12,-13,-14,-16)]
+dataset$text<-iconv(dataset$text,"UTF8", "ASCII", sub="")
+dataset$text<-gsub("(f|ht)tp(s?)://(.*)[.][a-z]//(.*)[.][a-z]","",dataset$text)
+dataset$text<-gsub("http[^[:space:]]*","",dataset$text)
+dataset$text<-gsub("@[a-z,A-Z]*","",dataset$text)
+df=data.frame(dataset$text,dataset$message,stringsAsFactors = FALSE)
+names(df)<-c('text','topic')
+corpus = Corpus(VectorSource(df$text))
+corpus = tm_map(corpus, tolower) ## convert text to lower case
+corpus = tm_map(corpus, removePunctuation) ## remove punctuations
+corpus = tm_map(corpus, removeNumbers) ## remove numbers
+corpus = tm_map(corpus, function(x) removeWords(x, stopwords("english")))
+corpus = tm_map(corpus, stemDocument, language = "english")
+td.mat = as.matrix(TermDocumentMatrix(corpus))
+```
+
+self-build string check function:
+```{r}
+strfind<-function(stringset,tableset){
+  result<-1:length(stringset)
+  for( i in 1:length(stringset)){
+    stringset[i]<-tolower(stringset[i])
+    for(j in 1:length(tableset)){
+      if(stri_detect(stringset[i],fixed=tableset[j])){
+        result[i]=TRUE
+        break
+      }
+    }
+  }
+  result
+}
+```
+
+
+
+network mining(Partisan words)
+```{r}
+library (caret);
+bias_p=dataset[-which(dataset$bias=='neutral'),]
+bias_p$bias=droplevels(bias_p$bias)
+corpus=Corpus(VectorSource(bias_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample<-dataset$bias[strfind(dataset$text,V(g)$label)]
+comp<-as.numeric(dataset$bias)-as.numeric(frequentsample)
+accuracy<-length(comp[comp==0])/length(dataset$bias)
+recall<-sensitivity(frequentsample,dataset$bias,positive="partisan")
+precision<-posPredValue(frequentsample,dataset$bias,positive="partisan")
+f<-2*(recall*precision)/(precision+recall)
+```
+network mining(Neutral words)
+```{r}
+bias_p=dataset[which(dataset$bias=='neutral'),]
+bias_p$bias=droplevels(bias_p$bias)
+corpus=Corpus(VectorSource(bias_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g1<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g1<-simplify(g1)
+V(g1)$label<-V(g1)$name
+V(g1)$degree<-degree(g1)
+V(g1)$label.cex <- 0.5 * V(g1)$degree / max(V(g1)$degree)+.5
+V(g1)$label.color <- rgb(0, 0, .2, .8)
+V(g1)$frame.color <- NA
+egam <- (log(E(g1)$weight)+1) / max(log(E(g1)$weight)+1)
+E(g1)$color <- rgb(.5, .5, .5, egam)
+E(g1)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g1)
+plot(g1,layout=layout1)
+
+frequentsample1<-dataset$bias[strfind(dataset$text,V(g1)$label)]
+comp1<-as.numeric(dataset$bias)-as.numeric(frequentsample1)
+accuracy1<-length(comp1[comp1==0])/length(dataset$bias)
+recall1<-sensitivity(frequentsample1,dataset$bias,positive="neutral")
+precision1<-posPredValue(frequentsample1,dataset$bias,positive="neutral")
+f1<-2*(recall1*precision1)/(precision1+recall1)
+```
+network mining(support words)
+```{r}
+message_p=dataset[which(dataset$message=='support'),]
+message_p$message=droplevels(message_p$message)
+corpus=Corpus(VectorSource(message_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample2<-dataset$message[strfind(dataset$text,V(g)$label)]
+mat2<-confusionMatrix(frequentsample2,dataset$message,positive="support")
+accuracy2<-mat2$byClass[9,11]
+recall2<-mat2$byClass[9,6]
+precision2<-mat2$byClass[9,5]
+f2<-2*(recall2*precision2)/(precision2+recall2)
+```
+network mining(attack words)
+```{r}
+message_p=dataset[which(dataset$message=='attack'),]
+message_p$message=droplevels(message_p$message)
+corpus=Corpus(VectorSource(message_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample3<-dataset$message[strfind(dataset$text,V(g)$label)]
+mat3<-confusionMatrix(frequentsample3,dataset$message,positive="attack")
+accuracy3<-mat3$byClass[1,11]
+recall3<-mat3$byClass[1,6]
+precision3<-mat3$byClass[1,5]
+f3<-2*(recall3*precision3)/(precision3+recall3)
+```
+network mining(national words)
+```{r}
+au_n=dataset
+au_n=au_n[which(au_n$audience=='national'),]
+au_n$audience=droplevels(au_n$audience)
+
+corpus = Corpus(VectorSource(au_n$text))
+#corpus=unlist(corpus)
+#corpus <- iconv(enc2utf8(corpus),sub="byte")
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removePunctuation) ## remove punctuations
+corpus = tm_map(corpus, removeNumbers) ## remove number
+corpus = tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus = tm_map(corpus, stemDocument, language = "english") ## stemming
+
+td.mat = as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample4<-dataset$audience[strfind(dataset$text,V(g)$label)]
+comp4<-as.numeric(dataset$audience)-as.numeric(frequentsample4)
+accuracy4<-length(comp4[comp4==0])/length(dataset$audience)
+recall4<-sensitivity(frequentsample4,dataset$audience,positive="national")
+precision4<-posPredValue(frequentsample4,dataset$audience,positive="national")
+f4<-2*(recall4*precision4)/(precision4+recall4)
+```
+network mining(constituency words)
+```{r}
+au_c=dataset
+au_c=au_c[which(au_c$audience=='constituency'),]
+au_c$audience=droplevels(au_c$audience)
+corpus = Corpus(VectorSource(au_c$text))
+#corpus=unlist(corpus)
+#corpus <- iconv(enc2utf8(corpus),sub="byte")
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removePunctuation) ## remove punctuations
+corpus = tm_map(corpus, removeNumbers) ## remove number
+corpus = tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus = tm_map(corpus, stemDocument, language = "english") ## stemming
+td.mat = as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample5<-dataset$audience[strfind(dataset$text,V(g)$label)]
+comp5<-as.numeric(dataset$audience)-as.numeric(frequentsample5)
+accuracy5<-length(comp5[comp5==0])/length(dataset$audience)
+recall5<-sensitivity(frequentsample5,dataset$audience,positive="constituency")
+precision5<-posPredValue(frequentsample5,dataset$audience,positive="constituency")
+f5<-2*(recall5*precision5)/(precision5+recall5)
+```
+goal based on social media
+```{r}
+p1<-dataset$message[dataset$source=='twitter']
+attack<-length(p1[p1=='attack'])/length(p1)
+policy<-length(p1[p1=='policy'])/length(p1)
+support<-length(p1[p1=='support'])/length(p1)
+information<-length(p1[p1=='information'])/length(p1)
+media<-length(p1[p1=='media'])/length(p1)
+constituency<-length(p1[p1=='constituency'])/length(p1)
+mobilization<-length(p1[p1=='mobilization'])/length(p1)
+other<-length(p1[p1=='other'])/length(p1)
+personal<-length(p1[p1=='personal'])/length(p1)
+table1<-cbind(attack, policy, support, information, media,constituency,mobilization, other, personal)
+table1=as.data.frame(table1)
+row.names(table1)=c("percentage")
+kable(table1,caption = "Table of percentages of goals based on twitter")
+```
+```{r}
+p2<-dataset$message[dataset$source=='facebook']
+attack<-length(p2[p2=='attack'])/length(p2)
+policy<-length(p2[p2=='policy'])/length(p2)
+support<-length(p2[p2=='support'])/length(p2)
+information<-length(p2[p2=='information'])/length(p2)
+media<-length(p2[p2=='media'])/length(p2)
+constituency<-length(p2[p2=='constituency'])/length(p2)
+mobilization<-length(p2[p2=='mobilization'])/length(p2)
+other<-length(p2[p2=='other'])/length(p2)
+personal<-length(p2[p2=='personal'])/length(p2)
+table2<-cbind(attack, policy, support, information, media,constituency,mobilization, other, personal)
+table2=as.data.frame(table2)
+row.names(table2)=c("percentage")
+kable(table1,caption = "Table of percentages of goals based on facebook")
+```
+
+performance of word cloud
+```{r}
+library(forcats)
+library(knitr)
+partisandata<-c(accuracy,precision,recall,f)
+neutraldata<-c(accuracy1,precision1,recall1,f1)
+supportdata<-c(accuracy2,precision2,recall2,f2)
+attackdata<-c(accuracy3,precision3,recall3,f3)
+nationaldata<-c(accuracy4,precision4,recall4,f4)
+constituencydata<-c(accuracy5,precision5,recall5,f5)
+result=rbind(partisandata,neutraldata,supportdata,attackdata,nationaldata,constituencydata)
+result=as.data.frame(result)
+colnames(result)=c("accuracy","precision","recall","F1-score")
+kable(result,caption = "Table of summary of performance")
+```
+
+add degree
+```{r}
+library (caret);
+##partisan
+bias_p=dataset[-which(dataset$bias=='neutral'),]
+bias_p$bias=droplevels(bias_p$bias)
+corpus=Corpus(VectorSource(bias_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+library(igraph)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample<-dataset$bias[strfind(dataset$text,V(g)$label[V(g)$degree>mean(V(g)$degree)])]
+comp<-as.numeric(dataset$bias)-as.numeric(frequentsample)
+accuracy<-length(comp[comp==0])/length(dataset$bias)
+recall<-sensitivity(frequentsample,dataset$bias,positive="partisan")
+precision<-posPredValue(frequentsample,dataset$bias,positive="partisan")
+f<-2*(recall*precision)/(precision+recall)
+
+##neutral
+bias_p=dataset[which(dataset$bias=='neutral'),]
+bias_p$bias=droplevels(bias_p$bias)
+corpus=Corpus(VectorSource(bias_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+g1<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g1<-simplify(g1)
+V(g1)$label<-V(g1)$name
+V(g1)$degree<-degree(g1)
+V(g1)$label.cex <- 0.5 * V(g1)$degree / max(V(g1)$degree)+.5
+V(g1)$label.color <- rgb(0, 0, .2, .8)
+V(g1)$frame.color <- NA
+egam <- (log(E(g1)$weight)+1) / max(log(E(g1)$weight)+1)
+E(g1)$color <- rgb(.5, .5, .5, egam)
+E(g1)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g1)
+plot(g1,layout=layout1)
+
+frequentsample1<-dataset$bias[strfind(dataset$text,V(g1)$label[V(g1)$degree>mean(V(g1)$degree)])]
+comp1<-as.numeric(dataset$bias)-as.numeric(frequentsample1)
+accuracy1<-length(comp1[comp1==0])/length(dataset$bias)
+recall1<-sensitivity(frequentsample1,dataset$bias,positive="neutral")
+precision1<-posPredValue(frequentsample1,dataset$bias,positive="neutral")
+f1<-2*(recall1*precision1)/(precision1+recall1)
+
+##support
+message_p=dataset[which(dataset$message=='support'),]
+message_p$message=droplevels(message_p$message)
+corpus=Corpus(VectorSource(message_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample2<-dataset$message[strfind(dataset$text,V(g)$label[V(g)$degree>mean(V(g)$degree)])]
+mat2<-confusionMatrix(frequentsample2,dataset$message,positive="support")
+accuracy2<-mat2$byClass[9,11]
+recall2<-mat2$byClass[9,6]
+precision2<-mat2$byClass[9,5]
+f2<-2*(recall2*precision2)/(precision2+recall2)
+
+##attack
+message_p=dataset[which(dataset$message=='attack'),]
+message_p$message=droplevels(message_p$message)
+corpus=Corpus(VectorSource(message_p$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus <- tm_map(corpus, removePunctuation)
+corpus <- tm_map(corpus, removeNumbers)
+corpus <- tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus <- tm_map(corpus, stemDocument, language = "english")
+td.mat=as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample3<-dataset$message[strfind(dataset$text,V(g)$label[V(g)$degree>mean(V(g)$degree)])]
+mat3<-confusionMatrix(frequentsample3,dataset$message,positive="attack")
+accuracy3<-mat3$byClass[1,11]
+recall3<-mat3$byClass[1,6]
+precision3<-mat3$byClass[1,5]
+f3<-2*(recall3*precision3)/(precision3+recall3)
+
+##national
+au_n=dataset
+au_n=au_n[which(au_n$audience=='national'),]
+au_n$audience=droplevels(au_n$audience)
+
+corpus = Corpus(VectorSource(au_n$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removePunctuation) ## remove punctuations
+corpus = tm_map(corpus, removeNumbers) ## remove number
+corpus = tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus = tm_map(corpus, stemDocument, language = "english") ## stemming
+
+td.mat = as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample4<-dataset$audience[strfind(dataset$text,V(g)$label[V(g)$degree>mean(V(g)$degree)])]
+comp4<-as.numeric(dataset$audience)-as.numeric(frequentsample4)
+accuracy4<-length(comp4[comp4==0])/length(dataset$audience)
+recall4<-sensitivity(frequentsample4,dataset$audience,positive="national")
+precision4<-posPredValue(frequentsample4,dataset$audience,positive="national")
+f4<-2*(recall4*precision4)/(precision4+recall4)
+
+##constituency
+au_c=dataset
+au_c=au_c[which(au_c$audience=='constituency'),]
+au_c$audience=droplevels(au_c$audience)
+corpus = Corpus(VectorSource(au_c$text))
+corpus <- tm_map(corpus, content_transformer(tolower))
+corpus = tm_map(corpus, removePunctuation) ## remove punctuations
+corpus = tm_map(corpus, removeNumbers) ## remove number
+corpus = tm_map(corpus, removeWords, c(stopwords("english"),"will","can","need"))
+corpus = tm_map(corpus, stemDocument, language = "english") ## stemming
+td.mat = as.matrix(TermDocumentMatrix(corpus))
+td.mat<-td.mat[1:30,]
+td.mat[td.mat>=1]<-1
+termMatrix<-td.mat%*%t(td.mat)
+g<-graph.adjacency(termMatrix, weighted = T,mode="undirected")
+g<-simplify(g)
+V(g)$label<-V(g)$name
+V(g)$degree<-degree(g)
+V(g)$label.cex <- 0.5 * V(g)$degree / max(V(g)$degree)+.5
+V(g)$label.color <- rgb(0, 0, .2, .8)
+V(g)$frame.color <- NA
+egam <- (log(E(g)$weight)+1) / max(log(E(g)$weight)+1)
+E(g)$color <- rgb(.5, .5, .5, egam)
+E(g)$width <- egam
+set.seed(3952)
+layout1<-layout.fruchterman.reingold(g)
+plot(g,layout=layout1)
+
+frequentsample5<-dataset$audience[strfind(dataset$text,V(g)$label[V(g)$degree>mean(V(g)$degree)])]
+comp5<-as.numeric(dataset$audience)-as.numeric(frequentsample5)
+accuracy5<-length(comp5[comp5==0])/length(dataset$audience)
+recall5<-sensitivity(frequentsample5,dataset$audience,positive="constituency")
+precision5<-posPredValue(frequentsample5,dataset$audience,positive="constituency")
+f5<-2*(recall5*precision5)/(precision5+recall5)
+
+
+library(forcats)
+library(knitr)
+partisandata<-c(accuracy,precision,recall,f)
+neutraldata<-c(accuracy1,precision1,recall1,f1)
+supportdata<-c(accuracy2,precision2,recall2,f2)
+attackdata<-c(accuracy3,precision3,recall3,f3)
+nationaldata<-c(accuracy4,precision4,recall4,f4)
+constituencydata<-c(accuracy5,precision5,recall5,f5)
+result=rbind(partisandata,neutraldata,supportdata,attackdata,nationaldata,constituencydata)
+result=as.data.frame(result)
+colnames(result)=c("accuracy","precision","recall","F1-score")
+kable(result,caption = "Table of summary of performance")
+```
+
+logistic regression
+```{r}
+library(forcats)
+library(knitr)
+logisticdata<-dataset[,c(-1,-10,-11,-13,-15)]
+summary(logisticdata)
+X_trusted_judgments = c(summary(logisticdata$X_trusted_judgments),sd(logisticdata$X_trusted_judgments))
+audience.confidence = c(summary(logisticdata$audience.confidence),sd(logisticdata$audience.confidence))
+bias.confidence = c(summary(logisticdata$bias.confidence),sd(logisticdata$bias.confidence))
+message.confidence = c(summary(logisticdata$message.confidence),sd(logisticdata$message.confidence))
+result = rbind(X_trusted_judgments,audience.confidence,bias.confidence,message.confidence)
+result = as.data.frame(result)
+colnames(result)[7]=c("sd")
+kable(result,caption = "Table of summary of numeric attributes")
+```
+```{r}
+library('ggplot2')
+library('ggpubr')
+library(e1071)
+g1<-ggplot(logisticdata, aes(x=X_trusted_judgments)) + geom_density()
+g2<-ggplot(logisticdata, aes(x=audience.confidence)) + geom_density()
+g3<-ggplot(logisticdata, aes(x=bias.confidence)) + geom_density()
+g4<-ggplot(logisticdata, aes(x=message.confidence)) + geom_density()
+figure<-ggarrange(g1,g2,g3,g4, labels="auto", ncol=2, nrow=2)
+figure
+```
+
+```{r}
+library(MASS)
+require(caret)
+library(ROCR)
+do.classification <- function(train.set, test.set, 
+                              cl.name, verbose=F) {
+  ## note: to plot ROC later, we want the raw probabilities,
+  ## not binary decisions
+  switch(cl.name, 
+         lr = { # logistic regression
+           model = glm(bias~., family=binomial("logit"), data=train.set,control = list(maxit = 500))
+           if (verbose) {
+             print(summary(model))             
+           }
+           prob = predict(model, newdata=test.set, type="response") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob
+         },
+         NB = {
+           model = naiveBayes(bias~., data=train.set)
+           prob = predict(model, newdata=test.set, type="raw") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob = prob[,2]/rowSums(prob) # renormalize the prob.
+           prob
+         }
+  )
+}
+pre.test <- function(dataset, cl.name, r=0.6, prob.cutoff=0.5) {
+  ## Let's use 60% random sample as training and remaining as testing
+  ## by default use 0.5 as cut-off
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.train = floor(n.obs*r)
+  train.idx = sample(1:n.obs,n.train)
+  train.idx
+  train.set = dataset[train.idx,]
+  test.set = dataset[-train.idx,]
+  cat('pre-test',cl.name,':',
+      '#training:',nrow(train.set),
+      '#testing',nrow(test.set),'\n')
+  prob = do.classification(train.set, test.set, cl.name)
+  # prob is an array of probabilities for cases being positive
+  
+  ## get confusion matrix
+  predicted = as.numeric(prob > prob.cutoff)
+  actual = test.set$bias
+  confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+  error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+  cat('error rate:',error,'\n')
+  # you may compute other measures based on confusion.matrix
+  # @see handout03 p.32-36
+  
+  ## plot ROC
+  result = data.frame(prob,actual)
+  pred = prediction(result$prob,result$actual)
+  perf = performance(pred, "tpr","fpr")
+  plot(perf)
+}
+k.fold.cv <- function(dataset, cl.name, k.fold=10, prob.cutoff=0.5) {
+  ## default: 10-fold CV, cut-off 0.5 
+  n.obs <- nrow(dataset) # no. of observations 
+  s = sample(n.obs)
+  errors = dim(k.fold)
+  probs = NULL
+  actuals = NULL
+  for (k in 1:k.fold) {
+    test.idx = which(s %% k.fold == (k-1) ) # use modular operator
+    train.set = dataset[-test.idx,]
+    test.set = dataset[test.idx,]
+    cat(k.fold,'-fold CV run',k,cl.name,':',
+        '#training:',nrow(train.set),
+        '#testing',nrow(test.set),'\n')
+    prob = do.classification(train.set, test.set, cl.name)
+    predicted = as.numeric(prob > prob.cutoff)
+    actual = test.set$bias
+    confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+    confusion.matrix
+    error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+    errors[k] = error
+    cat('\t\terror=',error,'\n')
+    probs = c(probs,prob)
+    actuals = c(actuals,actual)
+    ## you may compute other measures and store them in arrays
+  }
+  avg.error = mean(errors)
+  cat(k.fold,'-fold CV results:','avg error=',avg.error,'\n')
+  
+  ## plot ROC
+  result = data.frame(probs,actuals)
+  pred = prediction(result$probs,result$actuals)
+  perf = performance(pred, "tpr","fpr")
+  g<-plot(perf)  
+  
+## get other measures by using 'performance'
+get.measure <- function(pred, measure.name='auc'){
+    perf = performance(pred,measure.name)
+    m <- unlist(slot(perf, "y.values"))
+#     print(slot(perf, "x.values"))
+#     print(slot(perf, "y.values"))
+    m
+  }
+  err = mean(get.measure(pred, 'err'))
+  precision = mean(get.measure(pred, 'prec'),na.rm=T)
+  recall = mean(get.measure(pred, 'rec'),na.rm=T)
+  fscore = mean(get.measure(pred, 'f'),na.rm=T)
+  cat('error=',err,'precision=',precision,'recall=',recall,'f-score',fscore,'\n')
+  auc = get.measure(pred, 'auc')
+  cat('auc=',auc,'\n')
+  c(1-err,precision,recall,fscore,auc)
+}
+
+my.classifier <- function(dataset, cl.name='lr', do.cv=F) {
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.cols <- ncol(dataset) # no. of predictors
+  cat('my dataset:',
+      n.obs,'observations',
+      n.cols-1,'predictors','\n')
+  print(dataset[1:3,])
+  cat('label (y) distribution:')
+  print(table(dataset$bias))
+  
+  pre.test(dataset, cl.name)
+  if (do.cv) k.fold.cv(dataset, cl.name)
+}
+```
+
+```{r}
+logisticmodel0<-my.classifier(logisticdata[,c(3,5,7,10)], cl.name = 'lr',do.cv = T)
+```
+```{r}
+NBmodel0<-my.classifier(logisticdata[,c(3,5,7,10)], cl.name = 'NB',do.cv=T)
+```
+```{r}
+do.classification <- function(train.set, test.set, 
+                              cl.name, verbose=F) {
+  ## note: to plot ROC later, we want the raw probabilities,
+  ## not binary decisions
+  switch(cl.name, 
+         lr = { # logistic regression
+           model = glm(audience~., family=binomial("logit"), data=train.set,control = list(maxit = 500))
+           if (verbose) {
+             print(summary(model))             
+           }
+           prob = predict(model, newdata=test.set, type="response") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob
+         },
+         NB = {
+           model = naiveBayes(audience~., data=train.set)
+           prob = predict(model, newdata=test.set, type="raw") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob = prob[,2]/rowSums(prob) # renormalize the prob.
+           prob
+         }
+  )
+}
+pre.test <- function(dataset, cl.name, r=0.6, prob.cutoff=0.5) {
+  ## Let's use 60% random sample as training and remaining as testing
+  ## by default use 0.5 as cut-off
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.train = floor(n.obs*r)
+  train.idx = sample(1:n.obs,n.train)
+  train.idx
+  train.set = dataset[train.idx,]
+  test.set = dataset[-train.idx,]
+  cat('pre-test',cl.name,':',
+      '#training:',nrow(train.set),
+      '#testing',nrow(test.set),'\n')
+  prob = do.classification(train.set, test.set, cl.name)
+  # prob is an array of probabilities for cases being positive
+  
+  ## get confusion matrix
+  predicted = as.numeric(prob > prob.cutoff)
+  actual = test.set$audience
+  confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+  error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+  cat('error rate:',error,'\n')
+  # you may compute other measures based on confusion.matrix
+  # @see handout03 p.32-36
+  
+  ## plot ROC
+  result = data.frame(prob,actual)
+  pred = prediction(result$prob,result$actual)
+  perf = performance(pred, "tpr","fpr")
+  plot(perf)
+}
+k.fold.cv <- function(dataset, cl.name, k.fold=10, prob.cutoff=0.5) {
+  ## default: 10-fold CV, cut-off 0.5 
+  n.obs <- nrow(dataset) # no. of observations 
+  s = sample(n.obs)
+  errors = dim(k.fold)
+  probs = NULL
+  actuals = NULL
+  for (k in 1:k.fold) {
+    test.idx = which(s %% k.fold == (k-1) ) # use modular operator
+    train.set = dataset[-test.idx,]
+    test.set = dataset[test.idx,]
+    cat(k.fold,'-fold CV run',k,cl.name,':',
+        '#training:',nrow(train.set),
+        '#testing',nrow(test.set),'\n')
+    prob = do.classification(train.set, test.set, cl.name)
+    predicted = as.numeric(prob > prob.cutoff)
+    actual = test.set$audience
+    confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+    confusion.matrix
+    error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+    errors[k] = error
+    cat('\t\terror=',error,'\n')
+    probs = c(probs,prob)
+    actuals = c(actuals,actual)
+    ## you may compute other measures and store them in arrays
+  }
+  avg.error = mean(errors)
+  cat(k.fold,'-fold CV results:','avg error=',avg.error,'\n')
+  
+  ## plot ROC
+  result = data.frame(probs,actuals)
+  pred = prediction(result$probs,result$actuals)
+  perf = performance(pred, "tpr","fpr")
+  g<-plot(perf)  
+  
+## get other measures by using 'performance'
+get.measure <- function(pred, measure.name='auc'){
+    perf = performance(pred,measure.name)
+    m <- unlist(slot(perf, "y.values"))
+#     print(slot(perf, "x.values"))
+#     print(slot(perf, "y.values"))
+    m
+  }
+  err = mean(get.measure(pred, 'err'))
+  precision = mean(get.measure(pred, 'prec'),na.rm=T)
+  recall = mean(get.measure(pred, 'rec'),na.rm=T)
+  fscore = mean(get.measure(pred, 'f'),na.rm=T)
+  cat('error=',err,'precision=',precision,'recall=',recall,'f-score',fscore,'\n')
+  auc = get.measure(pred, 'auc')
+  cat('auc=',auc,'\n')
+  c(1-err,precision,recall,fscore,auc)
+}
+
+my.classifier <- function(dataset, cl.name='lr', do.cv=F) {
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.cols <- ncol(dataset) # no. of predictors
+  cat('my dataset:',
+      n.obs,'observations',
+      n.cols-1,'predictors','\n')
+  print(dataset[1:3,])
+  cat('label (y) distribution:')
+  print(table(dataset$audience))
+  
+  pre.test(dataset, cl.name)
+  if (do.cv) k.fold.cv(dataset, cl.name)
+}
+```
+
+```{r}
+logisticmodel1<-my.classifier(logisticdata[,c(3,5,7,10)], cl.name = 'lr',do.cv = T)
+```
+
+```{r}
+NBmodel1<-my.classifier(logisticdata[,c(3,5,7,10)], cl.name = 'NB',do.cv = T)
+```
+```{r}
+do.classification <- function(train.set, test.set, 
+                              cl.name, verbose=F) {
+  ## note: to plot ROC later, we want the raw probabilities,
+  ## not binary decisions
+  switch(cl.name, 
+         lr = { # logistic regression
+           model = glm(message~., family=binomial("logit"), data=train.set,control = list(maxit = 500))
+           if (verbose) {
+             print(summary(model))             
+           }
+           prob = predict(model, newdata=test.set, type="response") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob
+         },
+         NB = {
+           model = naiveBayes(message~., data=train.set)
+           prob = predict(model, newdata=test.set, type="raw") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob = prob[,2]/rowSums(prob) # renormalize the prob.
+           prob
+         }
+  )
+}
+pre.test <- function(dataset, cl.name, r=0.6, prob.cutoff=0.5) {
+  ## Let's use 60% random sample as training and remaining as testing
+  ## by default use 0.5 as cut-off
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.train = floor(n.obs*r)
+  train.idx = sample(1:n.obs,n.train)
+  train.idx
+  train.set = dataset[train.idx,]
+  test.set = dataset[-train.idx,]
+  cat('pre-test',cl.name,':',
+      '#training:',nrow(train.set),
+      '#testing',nrow(test.set),'\n')
+  prob = do.classification(train.set, test.set, cl.name)
+  # prob is an array of probabilities for cases being positive
+  
+  ## get confusion matrix
+  predicted = as.numeric(prob > prob.cutoff)
+  actual = test.set$message
+  confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+  error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+  cat('error rate:',error,'\n')
+  # you may compute other measures based on confusion.matrix
+  # @see handout03 p.32-36
+}
+k.fold.cv <- function(dataset, cl.name, k.fold=10, prob.cutoff=0.5) {
+  ## default: 10-fold CV, cut-off 0.5 
+  n.obs <- nrow(dataset) # no. of observations 
+  s = sample(n.obs)
+  errors = dim(k.fold)
+  probs = NULL
+  actuals = NULL
+  for (k in 1:k.fold) {
+    test.idx = which(s %% k.fold == (k-1) ) # use modular operator
+    train.set = dataset[-test.idx,]
+    test.set = dataset[test.idx,]
+    cat(k.fold,'-fold CV run',k,cl.name,':',
+        '#training:',nrow(train.set),
+        '#testing',nrow(test.set),'\n')
+    prob = do.classification(train.set, test.set, cl.name)
+    predicted = as.numeric(prob > prob.cutoff)
+    actual = test.set$message
+    confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+    confusion.matrix
+    error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+    errors[k] = error
+    cat('\t\terror=',error,'\n')
+    probs = c(probs,prob)
+    actuals = c(actuals,actual)
+    ## you may compute other measures and store them in arrays
+  }
+  avg.error = mean(errors)
+  cat(k.fold,'-fold CV results:','avg error=',avg.error,'\n')
+}
+
+my.classifier <- function(dataset, cl.name='lr', do.cv=F) {
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.cols <- ncol(dataset) # no. of predictors
+  cat('my dataset:',
+      n.obs,'observations',
+      n.cols-1,'predictors','\n')
+  print(dataset[1:3,])
+  cat('label (y) distribution:')
+  print(table(dataset$message))
+  
+  pre.test(dataset, cl.name)
+  if (do.cv) k.fold.cv(dataset, cl.name)
+}
+```
+
+```{r}
+NBmodel2<-my.classifier(logisticdata[,c(3,5,7,10)], cl.name = 'NB',do.cv = T)
+```
+```{r}
+library(MASS)
+require(caret)
+library(ROCR)
+do.classification <- function(train.set, test.set, 
+                              cl.name, verbose=F) {
+  ## note: to plot ROC later, we want the raw probabilities,
+  ## not binary decisions
+  switch(cl.name, 
+         lr = { # logistic regression
+           model = glm(source~., family=binomial("logit"), data=train.set,control = list(maxit = 500))
+           if (verbose) {
+             print(summary(model))             
+           }
+           prob = predict(model, newdata=test.set, type="response") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob
+         },
+         NB = {
+           model = naiveBayes(source~., data=train.set)
+           prob = predict(model, newdata=test.set, type="raw") 
+           #print(cbind(prob,as.character(test.set$y)))
+           prob = prob[,2]/rowSums(prob) # renormalize the prob.
+           prob
+         }
+  )
+}
+pre.test <- function(dataset, cl.name, r=0.6, prob.cutoff=0.5) {
+  ## Let's use 60% random sample as training and remaining as testing
+  ## by default use 0.5 as cut-off
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.train = floor(n.obs*r)
+  train.idx = sample(1:n.obs,n.train)
+  train.idx
+  train.set = dataset[train.idx,]
+  test.set = dataset[-train.idx,]
+  cat('pre-test',cl.name,':',
+      '#training:',nrow(train.set),
+      '#testing',nrow(test.set),'\n')
+  prob = do.classification(train.set, test.set, cl.name)
+  # prob is an array of probabilities for cases being positive
+  
+  ## get confusion matrix
+  predicted = as.numeric(prob > prob.cutoff)
+  actual = test.set$source
+  confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+  error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+  cat('error rate:',error,'\n')
+  # you may compute other measures based on confusion.matrix
+  # @see handout03 p.32-36
+  
+  ## plot ROC
+  result = data.frame(prob,actual)
+  pred = prediction(result$prob,result$actual)
+  perf = performance(pred, "tpr","fpr")
+  plot(perf)
+}
+k.fold.cv <- function(dataset, cl.name, k.fold=10, prob.cutoff=0.5) {
+  ## default: 10-fold CV, cut-off 0.5 
+  n.obs <- nrow(dataset) # no. of observations 
+  s = sample(n.obs)
+  errors = dim(k.fold)
+  probs = NULL
+  actuals = NULL
+  for (k in 1:k.fold) {
+    test.idx = which(s %% k.fold == (k-1) ) # use modular operator
+    train.set = dataset[-test.idx,]
+    test.set = dataset[test.idx,]
+    cat(k.fold,'-fold CV run',k,cl.name,':',
+        '#training:',nrow(train.set),
+        '#testing',nrow(test.set),'\n')
+    prob = do.classification(train.set, test.set, cl.name)
+    predicted = as.numeric(prob > prob.cutoff)
+    actual = test.set$source
+    confusion.matrix = table(actual,factor(predicted,levels=c(0,1)))
+    confusion.matrix
+    error = (confusion.matrix[1,2]+confusion.matrix[2,1]) / nrow(test.set)  
+    errors[k] = error
+    cat('\t\terror=',error,'\n')
+    probs = c(probs,prob)
+    actuals = c(actuals,actual)
+    ## you may compute other measures and store them in arrays
+  }
+  avg.error = mean(errors)
+  cat(k.fold,'-fold CV results:','avg error=',avg.error,'\n')
+  
+  ## plot ROC
+  result = data.frame(probs,actuals)
+  pred = prediction(result$probs,result$actuals)
+  perf = performance(pred, "tpr","fpr")
+  g<-plot(perf)  
+  
+## get other measures by using 'performance'
+get.measure <- function(pred, measure.name='auc'){
+    perf = performance(pred,measure.name)
+    m <- unlist(slot(perf, "y.values"))
+#     print(slot(perf, "x.values"))
+#     print(slot(perf, "y.values"))
+    m
+  }
+  err = mean(get.measure(pred, 'err'))
+  precision = mean(get.measure(pred, 'prec'),na.rm=T)
+  recall = mean(get.measure(pred, 'rec'),na.rm=T)
+  fscore = mean(get.measure(pred, 'f'),na.rm=T)
+  cat('error=',err,'precision=',precision,'recall=',recall,'f-score',fscore,'\n')
+  auc = get.measure(pred, 'auc')
+  cat('auc=',auc,'\n')
+  c(1-err,precision,recall,fscore,auc)
+}
+
+my.classifier <- function(dataset, cl.name='lr', do.cv=F) {
+  n.obs <- nrow(dataset) # no. of observations in dataset
+  n.cols <- ncol(dataset) # no. of predictors
+  cat('my dataset:',
+      n.obs,'observations',
+      n.cols-1,'predictors','\n')
+  print(dataset[1:3,])
+  cat('label (y) distribution:')
+  print(table(dataset$source))
+  
+  pre.test(dataset, cl.name)
+  if (do.cv) k.fold.cv(dataset, cl.name)
+}
+```
+
+```{r}
+p1<-logisticdata$source[logisticdata$message=='attack']
+p2<-logisticdata$source[logisticdata$message=='policy']
+length(p1[p1=='twitter'])/length(p1)
+length(p1[p1=='facebook'])/length(p1)
+length(p2[p2=='twitter'])/length(p2)
+length(p2[p2=='facebook'])/length(p2)
+```
+
